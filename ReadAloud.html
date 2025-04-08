@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Reader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+        }
+        textarea, #output {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        textarea {
+            resize: none;
+            min-height: 200px;
+        }
+        #output {
+            background-color: #f9f9f9;
+            overflow: auto;
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+        button {
+            padding: 10px 15px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        #convertBtn {
+            background-color: #4CAF50;
+        }
+        #readAloudBtn {
+            background-color: #2196F3;
+        }
+        #pauseResumeBtn {
+            background-color: #FFC107;
+            color: #333;
+        }
+        #stopReadingBtn {
+            background-color: #f44336;
+        }
+        #clearBtn {
+            background-color: #9E9E9E;
+        }
+        .voice-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        select {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .rate-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .status {
+            margin-left: auto;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Text Reader</h1>
+    
+    <div class="voice-controls">
+        <select id="voiceSelect">
+            <option value="">Select Voice</option>
+        </select>
+        <div class="rate-control">
+            <label for="rateControl">Speed:</label>
+            <input type="range" id="rateControl" min="0.5" max="2" step="0.1" value="1">
+            <span id="rateValue">1.0</span>
+        </div>
+        <div id="status" class="status">Ready</div>
+    </div>
+    
+    <div class="controls">
+        <button id="convertBtn">Convert</button>
+        <button id="readAloudBtn">Read Aloud</button>
+        <button id="pauseResumeBtn" disabled>Pause</button>
+        <button id="stopReadingBtn" disabled>Stop</button>
+        <button id="clearBtn">Clear All</button>
+    </div>
+    
+    <div class="container">
+        <textarea id="inputText" placeholder="Enter your text here..."></textarea>
+        <div id="output"></div>
+    </div>
+    <footer>
+        <div align='center'>
+            Copyright © 
+            <a color='inherit' href='https://github.com/KasraSorouri/'>
+            CasraSoft
+            </a>
+            2025.
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputText = document.getElementById('inputText');
+            const output = document.getElementById('output');
+            const convertBtn = document.getElementById('convertBtn');
+            const readAloudBtn = document.getElementById('readAloudBtn');
+            const pauseResumeBtn = document.getElementById('pauseResumeBtn');
+            const stopReadingBtn = document.getElementById('stopReadingBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const voiceSelect = document.getElementById('voiceSelect');
+            const rateControl = document.getElementById('rateControl');
+            const rateValue = document.getElementById('rateValue');
+            const status = document.getElementById('status');
+            
+            let speechSynthesis = window.speechSynthesis;
+            let voices = [];
+            let harriVoice = null;
+            let currentUtterance = null;
+            let isPaused = false;
+
+            // Convert text
+            function convertToHtml(text) {
+                // Escape HTML and preserve line breaks
+                const escapedText = text
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/\n/g, "<br>");
+                
+                return `<div style="white-space: pre-wrap">${escapedText}</div>`;
+            }
+
+            // Update button states
+            function updateButtonStates() {
+                const isSpeaking = speechSynthesis.speaking;
+                const isPaused = speechSynthesis.paused;
+                
+                readAloudBtn.disabled = isSpeaking && !isPaused;
+                pauseResumeBtn.disabled = !isSpeaking;
+                stopReadingBtn.disabled = !isSpeaking && !isPaused;
+                
+                if (isPaused) {
+                    pauseResumeBtn.textContent = "Resume";
+                } else {
+                    pauseResumeBtn.textContent = "Pause";
+                }
+            }
+
+            // Update status message
+            function updateStatus(message) {
+                status.textContent = message;
+            }
+
+            // Populate voice list
+            function loadVoices() {
+                voices = speechSynthesis.getVoices();
+                voiceSelect.innerHTML = '<option value="">Select Voice</option>';
+                
+                // Find voice
+                harriVoice = voices.find(voice => 
+                    voice.name.includes('Harri') && 
+                    (voice.lang.includes('fi') && voice.name.includes('Microsoft')));
+                
+                voices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    option.setAttribute('data-name', voice.name);
+                    option.setAttribute('data-lang', voice.lang);
+                    voiceSelect.appendChild(option);
+                    
+                    // Select Harri if found
+                    if (harriVoice && voice.name === harriVoice.name) {
+                        option.selected = true;
+                    }
+                });
+            }
+
+            // Handle conversion
+            convertBtn.addEventListener('click', function() {
+                const text = inputText.value;
+                if (text.trim()) {
+                    output.innerHTML = convertToHtml(text);
+                    updateStatus("Text converted to HTML");
+                } else {
+                    alert('Please enter some text first');
+                }
+            });
+
+            
+            // Read text aloud
+            readAloudBtn.addEventListener('click', function() {
+                const text = inputText.value || output.textContent;
+                if (text.trim()) {
+                    if (speechSynthesis.speaking) {
+                        speechSynthesis.cancel();
+                    }
+                    
+                    currentUtterance = new SpeechSynthesisUtterance(text);
+                    currentUtterance.lang = 'fi-FI'; // Finnish language
+                    currentUtterance.rate = parseFloat(rateControl.value);
+                    
+                    // Use selected voice or Harri if available
+                    const selectedOption = voiceSelect.selectedOptions[0];
+                    if (selectedOption && selectedOption.value) {
+                        const selectedVoice = voices.find(
+                            v => v.name === selectedOption.getAttribute('data-name'));
+                        if (selectedVoice) {
+                            currentUtterance.voice = selectedVoice;
+                        }
+                    } else if (harriVoice) {
+                        currentUtterance.voice = harriVoice;
+                    }
+                    
+                    // Event handlers for utterance
+                    currentUtterance.onstart = function() {
+                        updateStatus("Reading...");
+                        updateButtonStates();
+                    };
+                    
+                    currentUtterance.onend = function() {
+                        updateStatus("Finished reading");
+                        updateButtonStates();
+                    };
+                    
+                    currentUtterance.onerror = function(event) {
+                        updateStatus("Error: " + event.error);
+                        updateButtonStates();
+                    };
+                    
+                    speechSynthesis.speak(currentUtterance);
+                    updateStatus("Starting to read...");
+                    updateButtonStates();
+                } else {
+                    alert('Please enter some text first');
+                }
+            });
+
+            // Pause or resume reading
+            pauseResumeBtn.addEventListener('click', function() {
+                if (speechSynthesis.paused) {
+                    speechSynthesis.resume();
+                    updateStatus("Resumed reading");
+                } else {
+                    speechSynthesis.pause();
+                    updateStatus("Paused");
+                }
+                updateButtonStates();
+            });
+
+            // Stop reading
+            stopReadingBtn.addEventListener('click', function() {
+                speechSynthesis.cancel();
+                updateStatus("Stopped");
+                updateButtonStates();
+            });
+
+            // Clear all fields
+            clearBtn.addEventListener('click', function() {
+                inputText.value = '';
+                output.innerHTML = '';
+                if (speechSynthesis.speaking) {
+                    speechSynthesis.cancel();
+                }
+                updateStatus("Cleared");
+                updateButtonStates();
+            });
+
+            // Update rate display
+            rateControl.addEventListener('input', function() {
+                rateValue.textContent = this.value;
+                if (currentUtterance && speechSynthesis.speaking) {
+                    currentUtterance.rate = parseFloat(this.value);
+                    speechSynthesis.cancel();
+                    speechSynthesis.speak(currentUtterance);
+                }
+            });
+
+            // Load voices when they become available
+            speechSynthesis.onvoiceschanged = loadVoices;
+            
+            // Initial load (needed for Chrome)
+            loadVoices();
+
+            // Auto-focus the textarea on load
+            inputText.focus();
+        });
+    </script>
+</body>
+</html>
